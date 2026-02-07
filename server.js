@@ -126,3 +126,45 @@ app.get("/", (req, res) => {
 ---------------------------------------------- */
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+app.get("/resend-old-reviews", async (req, res) => {
+  const sql = "SELECT name, email FROM reviews WHERE email IS NOT NULL";
+
+  db.query(sql, async (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Database error.");
+    }
+
+    let sent = 0;
+    let skipped = 0;
+
+    for (const r of results) {
+      if (!r.email) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await axios.post(
+          `${process.env.EMALURLVALUE}/send-relay`,
+          {
+            to: r.email,
+            name: r.name
+          },
+          {
+            headers: {
+              "x-relay-secret": process.env.EMAIL_RELAY_SECRET
+            }
+          }
+        );
+
+        sent++;
+      } catch (err) {
+        console.error("Failed to send to:", r.email, err.message);
+      }
+    }
+
+    res.send(`Done! Sent: ${sent}, Skipped: ${skipped}`);
+  });
+});
