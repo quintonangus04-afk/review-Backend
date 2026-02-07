@@ -24,9 +24,9 @@ app.post("/review", (req, res) => {
   }
 
   const sql = `
-    INSERT INTO reviews (name, email, rating, comments, date_submitted)
-    VALUES (?, ?, ?, ?, NOW())
-  `;
+  INSERT INTO reviews (name, email, rating, comments, date_submitted)
+  VALUES (?, ?, ?, ?, NOW())
+`;
 
   db.query(sql, [name || null, email || null, rating, comments], (err) => {
     if (err) {
