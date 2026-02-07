@@ -1,12 +1,15 @@
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2");
+const nodemailer = require("nodemailer");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// MySQL connection pool
+/* ---------------------------------------------
+   DATABASE CONNECTION (Railway MySQL)
+---------------------------------------------- */
 const db = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -15,7 +18,45 @@ const db = mysql.createPool({
   port: process.env.DB_PORT || 3306
 });
 
-// Save a review
+/* ---------------------------------------------
+   EMAIL TRANSPORTER (Fasthosts / Livemail)
+   - Works on Railway
+   - Uses STARTTLS on port 587
+   - TLS override required for Railway
+---------------------------------------------- */
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.livemail.co.uk",
+  port: 587,
+  secure: false, // STARTTLS
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  },
+  tls: {
+    rejectUnauthorized: false // Required for Railway + Fasthosts
+  }
+});
+
+/* ---------------------------------------------
+   FUNCTION: Send automated reply email
+---------------------------------------------- */
+function sendReplyEmail(to, name) {
+  if (!to) return Promise.resolve(); // Skip if no email provided
+
+  const mailOptions = {
+    from: process.env.SMTP_USER,
+    to: to,
+    subject: "Thank you for your review",
+    text: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Printing`
+  };
+
+  return transporter.sendMail(mailOptions)
+    .catch(err => console.error("Email send error:", err));
+}
+
+/* ---------------------------------------------
+   ROUTE: Save a new review + send email
+---------------------------------------------- */
 app.post("/review", (req, res) => {
   const { name, email, rating, comments } = req.body;
 
@@ -24,21 +65,48 @@ app.post("/review", (req, res) => {
   }
 
   const sql = `
-  INSERT INTO reviews (name, email, rating, comments, date_submitted)
-  VALUES (?, ?, ?, ?, NOW())
-`;
+    INSERT INTO reviews (name, email, rating, comments, date_submitted)
+    VALUES (?, ?, ?, ?, NOW())
+  `;
 
-  db.query(sql, [name || null, email || null, rating, comments], (err) => {
+  db.query(sql, [name || null, email || null, rating, comments], async (err) => {
     if (err) {
       console.error(err);
       return res.status(500).send("Failed to save review.");
     }
 
+    // Send automated reply email
+    await sendReplyEmail(email, name);
+
     res.send("Thank you! Your review has been saved.");
   });
 });
 
-// Display all reviews
+/* ---------------------------------------------
+   TEMPORARY ROUTE:
+   Send emails to ALL existing reviewers
+   - Visit once, then delete this route
+---------------------------------------------- */
+app.get("/send-all-review-emails", async (req, res) => {
+  const sql = "SELECT name, email FROM reviews";
+
+  db.query(sql, async (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Error loading reviews.");
+    }
+
+    for (const r of results) {
+      await sendReplyEmail(r.email, r.name);
+    }
+
+    res.send("Emails sent to all previous reviewers.");
+  });
+});
+
+/* ---------------------------------------------
+   ROUTE: Display all reviews in HTML
+---------------------------------------------- */
 app.get("/", (req, res) => {
   const sql = "SELECT * FROM reviews ORDER BY date_submitted DESC";
 
@@ -84,6 +152,8 @@ app.get("/", (req, res) => {
   });
 });
 
+/* ---------------------------------------------
+   START SERVER
+---------------------------------------------- */
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
