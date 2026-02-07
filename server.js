@@ -30,7 +30,7 @@ async function relayEmail(to, name) {
       {
         to,
         subject: "Thank you for your review",
-        message: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Printing`
+        message: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group team`
       },
       {
         headers: {
