@@ -150,7 +150,7 @@ app.get("/resend-old-reviews", async (req, res) => {
 
       try {
         await axios.post(
-          `${process.env.EMALURLVALUE}/send-relay`,
+          `${process.env.EMAILURLVALUE}/send-relay`,
           {
             to: r.email,
             name: r.name
