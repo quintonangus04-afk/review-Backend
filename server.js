@@ -168,3 +168,10 @@ app.get("/resend-old-reviews", async (req, res) => {
     res.send(`Done! Sent: ${sent}, Skipped: ${skipped}`);
   });
 });
+
+app.get("/debug-reviews", (req, res) => {
+  db.query("SELECT * FROM reviews LIMIT 20", (err, results) => {
+    if (err) return res.status(500).send(err);
+    res.json(results);
+  });
+});
