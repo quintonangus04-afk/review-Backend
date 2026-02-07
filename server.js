@@ -4,7 +4,19 @@ const mysql = require("mysql2");
 const axios = require("axios");
 
 const app = express();
-app.use(cors());
+
+/* ---------------------------------------------
+   CORS (allow your domain only)
+---------------------------------------------- */
+app.use(cors({
+  origin: [
+    "https://thecousingroup.co.uk",
+    "https://www.thecousingroup.co.uk"
+  ],
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 app.use(express.json());
 
 /* ---------------------------------------------
@@ -22,7 +34,7 @@ const db = mysql.createPool({
    FUNCTION: Relay email to Google Cloud
 ---------------------------------------------- */
 async function relayEmail(to, name) {
-  if (!to) return; // Skip if no email provided
+  if (!to) return;
 
   try {
     await axios.post(
@@ -46,35 +58,101 @@ async function relayEmail(to, name) {
 }
 
 /* ---------------------------------------------
-   ROUTE: Save a new review + relay email
+   TOKEN SYSTEM
 ---------------------------------------------- */
-app.post("/review", (req, res) => {
-  const { name, email, rating, comments } = req.body;
 
-  if (!rating || !comments) {
-    return res.status(400).send("Rating and comments are required.");
+/* Generate a review link */
+app.post("/generate-review-link", (req, res) => {
+  const { email, name } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: "Email is required" });
   }
 
+  const token = Math.random().toString(36).substring(2, 12);
+
   const sql = `
-    INSERT INTO reviews (name, email, rating, comments, date_submitted)
-    VALUES (?, ?, ?, ?, NOW())
+    INSERT INTO review_tokens (token, email, name)
+    VALUES (?, ?, ?)
   `;
 
-  db.query(sql, [name || null, email || null, rating, comments], async (err) => {
+  db.query(sql, [token, email, name || null], (err) => {
     if (err) {
       console.error(err);
-      return res.status(500).send("Failed to save review.");
+      return res.status(500).json({ error: "Failed to create token" });
     }
 
-    // Relay email to Google Cloud
-    await relayEmail(email, name);
+    const link = `https://thecousingroup.co.uk/review.html?token=${token}`;
+    res.json({ link });
+  });
+});
 
-    res.send("Thank you! Your review has been saved.");
+/* Validate token */
+app.get("/review-token/:token", (req, res) => {
+  const { token } = req.params;
+
+  const sql = `
+    SELECT * FROM review_tokens
+    WHERE token = ? AND used = 0
+  `;
+
+  db.query(sql, [token], (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    if (results.length === 0) {
+      return res.json({ valid: false });
+    }
+
+    res.json({ valid: true });
   });
 });
 
 /* ---------------------------------------------
-   ROUTE: Display all reviews in HTML
+   SUBMIT REVIEW (token required)
+---------------------------------------------- */
+app.post("/review", (req, res) => {
+  const { token, rating, comments } = req.body;
+
+  if (!token || !rating || !comments) {
+    return res.status(400).json({ error: "Token, rating and comments are required." });
+  }
+
+  const tokenSql = `
+    SELECT * FROM review_tokens
+    WHERE token = ? AND used = 0
+  `;
+
+  db.query(tokenSql, [token], (err, results) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+
+    if (results.length === 0) {
+      return res.status(400).json({ error: "Invalid or expired token." });
+    }
+
+    const { email, name } = results[0];
+
+    const reviewSql = `
+      INSERT INTO reviews (name, email, rating, comments, date_submitted)
+      VALUES (?, ?, ?, ?, NOW())
+    `;
+
+    db.query(reviewSql, [name, email, rating, comments], async (err) => {
+      if (err) return res.status(500).json({ error: "Failed to save review." });
+
+      db.query("UPDATE review_tokens SET used = 1 WHERE token = ?", [token]);
+
+      await relayEmail(email, name);
+
+      res.json({ message: "Thank you! Your review has been saved." });
+    });
+  });
+});
+
+/* ---------------------------------------------
+   PUBLIC REVIEW LIST PAGE
 ---------------------------------------------- */
 app.get("/", (req, res) => {
   const sql = "SELECT * FROM reviews ORDER BY date_submitted DESC";
@@ -127,48 +205,3 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-app.get("/resend-old-reviews", async (req, res) => {
-  const sql = "SELECT name, email FROM reviews";
-
-  db.query(sql, async (err, results) => {
-    if (err) {
-      console.error("DB error:", err);
-      return res.status(500).send("Database error.");
-    }
-
-    let sent = 0;
-    let skipped = 0;
-
-    for (const r of results) {
-      console.log("Processing:", r);
-
-      if (!r.email || r.email.trim() === "") {
-        console.log("Skipping (no email):", r);
-        skipped++;
-        continue;
-      }
-
-      try {
-        await axios.post(
-          `${process.env.EMAILURLVALUE}/send-relay`,
-          {
-            to: r.email,
-            name: r.name
-          },
-          {
-            headers: {
-              "x-relay-secret": process.env.EMAIL_RELAY_SECRET
-            }
-          }
-        );
-
-        console.log("Sent to:", r.email);
-        sent++;
-      } catch (err) {
-        console.error("Failed to send to:", r.email, err.message);
-      }
-    }
-
-    res.send(`Finished! Emails sent: ${sent}, skipped: ${skipped}`);
-  });
-});
