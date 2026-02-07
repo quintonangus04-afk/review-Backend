@@ -26,7 +26,7 @@ async function relayEmail(to, name) {
 
   try {
     await axios.post(
-      `${process.env.GCLOUD_EMAIL_URL}/send-relay`,
+      `${process.env.EMAILURLVALUE}/send-relay`,
       {
         to,
         subject: "Thank you for your review",
