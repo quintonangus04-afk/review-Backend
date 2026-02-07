@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const mysql = require("mysql2");
-const nodemailer = require("nodemailer");
+const axios = require("axios");
 
 const app = express();
 app.use(cors());
@@ -19,43 +19,31 @@ const db = mysql.createPool({
 });
 
 /* ---------------------------------------------
-   EMAIL TRANSPORTER (Fasthosts / Livemail)
-   - Works on Railway
-   - Uses STARTTLS on port 587
-   - TLS override required for Railway
+   FUNCTION: Relay email to Google Cloud
 ---------------------------------------------- */
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.livemail.co.uk",
-  port: 587,
-  secure: false, // STARTTLS
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS
-  },
-  tls: {
-    rejectUnauthorized: false // Required for Railway + Fasthosts
+async function relayEmail(to, name) {
+  if (!to) return; // Skip if no email provided
+
+  try {
+    await axios.post(
+      `${process.env.GCLOUD_EMAIL_URL}/send-relay`,
+      {
+        to,
+        name
+      },
+      {
+        headers: {
+          "x-relay-secret": process.env.EMAIL_RELAY_SECRET
+        }
+      }
+    );
+  } catch (err) {
+    console.error("Relay email error:", err.response?.data || err.message);
   }
-});
-
-/* ---------------------------------------------
-   FUNCTION: Send automated reply email
----------------------------------------------- */
-function sendReplyEmail(to, name) {
-  if (!to) return Promise.resolve(); // Skip if no email provided
-
-  const mailOptions = {
-    from: process.env.SMTP_USER,
-    to: to,
-    subject: "Thank you for your review",
-    text: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Printing`
-  };
-
-  return transporter.sendMail(mailOptions)
-    .catch(err => console.error("Email send error:", err));
 }
 
 /* ---------------------------------------------
-   ROUTE: Save a new review + send email
+   ROUTE: Save a new review + relay email
 ---------------------------------------------- */
 app.post("/review", (req, res) => {
   const { name, email, rating, comments } = req.body;
@@ -75,32 +63,10 @@ app.post("/review", (req, res) => {
       return res.status(500).send("Failed to save review.");
     }
 
-    // Send automated reply email
-    await sendReplyEmail(email, name);
+    // Relay email to Google Cloud
+    await relayEmail(email, name);
 
     res.send("Thank you! Your review has been saved.");
-  });
-});
-
-/* ---------------------------------------------
-   TEMPORARY ROUTE:
-   Send emails to ALL existing reviewers
-   - Visit once, then delete this route
----------------------------------------------- */
-app.get("/send-all-review-emails", async (req, res) => {
-  const sql = "SELECT name, email FROM reviews";
-
-  db.query(sql, async (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).send("Error loading reviews.");
-    }
-
-    for (const r of results) {
-      await sendReplyEmail(r.email, r.name);
-    }
-
-    res.send("Emails sent to all previous reviewers.");
   });
 });
 
