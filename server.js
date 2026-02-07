@@ -128,11 +128,11 @@ const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 app.get("/resend-old-reviews", async (req, res) => {
-  const sql = "SELECT name, email FROM reviews WHERE email IS NOT NULL";
+  const sql = "SELECT name, email FROM reviews";
 
   db.query(sql, async (err, results) => {
     if (err) {
-      console.error(err);
+      console.error("DB error:", err);
       return res.status(500).send("Database error.");
     }
 
@@ -140,7 +140,10 @@ app.get("/resend-old-reviews", async (req, res) => {
     let skipped = 0;
 
     for (const r of results) {
-      if (!r.email) {
+      console.log("Processing:", r);
+
+      if (!r.email || r.email.trim() === "") {
+        console.log("Skipping (no email):", r);
         skipped++;
         continue;
       }
@@ -159,19 +162,13 @@ app.get("/resend-old-reviews", async (req, res) => {
           }
         );
 
+        console.log("Sent to:", r.email);
         sent++;
       } catch (err) {
         console.error("Failed to send to:", r.email, err.message);
       }
     }
 
-    res.send(`Done! Sent: ${sent}, Skipped: ${skipped}`);
-  });
-});
-
-app.get("/debug-reviews", (req, res) => {
-  db.query("SELECT * FROM reviews LIMIT 20", (err, results) => {
-    if (err) return res.status(500).send(err);
-    res.json(results);
+    res.send(`Finished! Emails sent: ${sent}, skipped: ${skipped}`);
   });
 });
