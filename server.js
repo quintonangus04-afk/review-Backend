@@ -26,10 +26,11 @@ async function relayEmail(to, name) {
 
   try {
     await axios.post(
-      `${process.env.GCLOUD_EMAIL_URL}/send-relay`,
+      `${process.env.GCLOUD_EMAIL_URL}/send`,
       {
         to,
-        name
+        subject: "Thank you for your review",
+        message: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Printing`
       },
       {
         headers: {
@@ -37,6 +38,8 @@ async function relayEmail(to, name) {
         }
       }
     );
+
+    console.log("Relay email success");
   } catch (err) {
     console.error("Relay email error:", err.response?.data || err.message);
   }
