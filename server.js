@@ -49,7 +49,7 @@ app.post("/send-review-email", async (req, res) => {
         to: email,
         name,
         subject: "Please leave a review",
-        message: `Hi ${name || "there"},\n\nWe would appreciate your feedback!\n\nPlease leave your review here:\n${link}\n\nThank you,\nThe Cousin Group Printing`
+        message: `Hi ${name || "there"},\n\nWe would appreciate your feedback!\n\nPlease leave your review here:\n${link}\n\nThank you,\nThe Cousin Group Team`
       },
       {
         headers: {
@@ -160,7 +160,7 @@ app.post("/review", (req, res) => {
             to: email,
             name,
             subject: "Thank you for your review",
-            message: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Printing`
+            message: `Hi ${name || "there"},\n\nThank you for leaving a review. We appreciate your feedback!\n\nBest regards,\nThe Cousin Group Team`
           },
           {
             headers: {
