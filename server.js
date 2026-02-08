@@ -82,7 +82,7 @@ app.post("/generate-review-link", (req, res) => {
       return res.status(500).json({ error: "Failed to create token" });
     }
 
-    const link = `https://thecousingroup.co.uk/review.html?token=${token}`;
+    const link = `https://thecousingroup.co.uk/reviews/?token=${token}`;
     res.json({ link });
   });
 });
